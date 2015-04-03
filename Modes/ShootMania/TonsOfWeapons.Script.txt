@@ -1,0 +1,624 @@
+/**
+ *	Mode TonsOfWeapons
+ *  (BaseMode)
+ */
+
+#Extends "Modes/ShootMania/ScriptedMode.Script.txt"
+
+#Include "Libs/Nadeo/Manialink.Script.txt" as Manialink
+
+//#Const	Version				"2015-01-26"
+#Const	ScriptName			"TonsOfWeapons.Script.txt"
+#Const  C_Actions 			[ "Flummi", "Spirale", "rotation", "faster", "lasern", "laserb", "Taser", "Flak", "mine" ]
+#Const  C_DefaultClasses	[ "Soldier" => [ "weapon1" => "Taser", 
+											 "weapon2" => "Flak", 
+											 "health" => "200",
+											 "staminaMax" => "1.0" ], 
+							  "Tank"    => [ "weapon1" => "rotation", 
+											 "weapon2" => "faster", 
+											 "health" => "400",
+											 "staminaMax" => "0.5" ], 
+							  "Sniper"    => [ "weapon1" => "lasern", 
+											 "weapon2" => "laserb", 
+											 "health" => "150",
+											 "staminaMax" => "0.9" ], 
+							  "Blaster"    => [ "weapon1" => "Taser", 
+											 "weapon2" => "faster", 
+											 "consumable1" => "mine", 
+											 "health" => "400",
+											 "staminaMax" => "0.6" ], 
+							  "Scout"    => [ "weapon1" => "rotation", 
+											 "weapon2" => "faster", 
+											 "health" => "200",
+											 "staminaMax" => "2.0" ] ]
+#Const	C_ClassesPerPage	5
+#Const	C_ActionDmg			[ "Flummi" => 0.5, "Spirale" => 0.5, "rotation" => 0.5, "faster" => 0.5, "lasern" => 0.8, "laserb" => 0.6, "Taser" => 0.7, "Flak" => 1.0 ]
+#Const	C_ActionAcc			[ "Flummi" => 0.3, "Spirale" => 0.5, "rotation" => 0.8, "faster" => 0.9, "lasern" => 1.0, "laserb" => 0.7, "Taser" => 0.9, "Flak" => 0.2 ]
+#Const C_ActionAmmo			[ "Flummi" => 0.8, "Spirale" => 0.5, "rotation" => 0.9, "faster" => 0.4, "lasern" => 0.7, "laserb" => 0.2, "Taser" => 0.7, "Flak" => 0.65 ]
+#Const C_ActionRng			[ "Flummi" => 0.5, "Spirale" => 0.9, "rotation" => 0.85, "faster" => 0.8, "lasern" => 1.0, "laserb" => 0.8, "Taser" => 1.0, "Flak" => 0.3 ]
+
+declare CSmMapLandmark[][Integer] G_SpawnQueue;
+declare Ident[Text] G_Actions;
+
+***LoadActions***
+***
+foreach (Action, C_Actions)
+{
+	G_Actions[Action] = ActionList_Add(Action ^ ".Action.Gbx");
+}
+***
+
+***InitServer***
+***
+SMB_InitialSpawn = False;
+***
+
+***StartServer***
+***
+declare Tmp = Layers::Create("ClassSelection", GetMLClassSelection());
+Tmp = Layers::Create("WeaponUI", GetDefaultWeaponML());
+***
+
+***StartMap***
+***
+UpdateSpawns();
+foreach (Player, AllPlayers)
+{
+	declare SelectingClass for Player = False;
+	SelectingClass = False;
+	ShowClassSelection(Player);
+}
+MB_Sleep(1000);
+***
+
+***SpawnPlayer***
+***
+ApplyClass(Player, C_DefaultClasses[Net_Class]);
+SM::SpawnPlayer(Player, 0, FindSpawn(0).PlayerSpawn, Now + 1000);
+***
+
+***PlayLoop***
+***
+foreach (Player, AllPlayers)
+{
+	declare SelectingClass for Player = False;
+	if (Player.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned)
+	{
+		declare UI <=> UIManager.GetUI(Player);
+		declare netread Net_Class for UI = "";
+		
+		if (Net_Class == "")
+		{
+			if (!SelectingClass)
+			{
+				ShowClassSelection(Player);
+			}
+		}
+		else
+		{
+			if (SelectingClass)
+			{
+				HideClassSelection(Player);
+			}
+			// depends on mode type
+			---SpawnPlayer---
+		}
+	}
+}
+
+foreach (Event, PendingEvents)
+{
+	switch (Event.Type)
+	{
+		case CSmModeEvent::EType::OnActionEvent:
+		{
+			switch (Event.ActionInput)
+			{
+				case CSmModeEvent::EActionInput::Activable1:
+					SwitchToWeapon(Event.Player, 0);
+				case CSmModeEvent::EActionInput::Activable2:
+					SwitchToWeapon(Event.Player, 1);
+				case CSmModeEvent::EActionInput::Activable3:
+					SwitchToWeapon(Event.Player, 2);
+				case CSmModeEvent::EActionInput::Activable4:
+					SwitchToWeapon(Event.Player, 3);
+				default:
+					log(Event.ActionInput);
+			}
+		}
+		case CSmModeEvent::EType::OnPlayerRequestActionChange:
+		{
+			SwitchWeapon(Event.Player, Event.ActionChange);
+		}
+	}
+}
+***
+
+Void UpdateSpawns(Integer _Clan)
+{
+	foreach(Spawn in MapLandmarks_PlayerSpawn)
+	{
+		G_SpawnQueue[_Clan].add(Spawn);
+	}
+}
+
+Void UpdateSpawns()
+{
+	G_SpawnQueue = [0=>CSmMapLandmark[], 1=>CSmMapLandmark[], 2=>CSmMapLandmark[]];
+	for (I, 0, 2)
+	{
+		UpdateSpawns(I);
+	}
+}
+
+CSmMapLandmark FindSpawn(Integer _Clan)
+{
+	declare CSmMapLandmark[] Spawns;
+	if (G_SpawnQueue[_Clan].count < 1)
+	{
+		UpdateSpawns();
+	}
+	Spawns = G_SpawnQueue[_Clan];
+	declare CSmMapLandmark Spawn <=> Spawns[_Clan];
+	declare ADV = G_SpawnQueue[_Clan].remove(Spawn);
+	return Spawn;
+}
+
+Void SwitchToWeapon(CSmPlayer _Player, Integer _Weapon)
+{
+	declare CurrentWeapon for _Player = 0;
+	declare MaxWeapon for _Player = 1;
+	if (_Weapon == CurrentWeapon || _Weapon < 0 || _Weapon > MaxWeapon)
+	{
+		return;
+	}
+	
+	declare ::EActionSlot Slot;
+	
+	switch (_Weapon)
+	{
+		case 0:
+			Slot = ::EActionSlot::Slot_A;
+		case 1:
+			Slot = ::EActionSlot::Slot_B;
+		case 2:
+			Slot = ::EActionSlot::Slot_C;
+		case 3:
+			Slot = ::EActionSlot::Slot_D;
+		case 4:
+			Slot = ::EActionSlot::Slot_E;
+		case 5:
+			Slot = ::EActionSlot::Slot_F;
+		case 6:
+			Slot = ::EActionSlot::Slot_G;
+		case 7:
+			Slot = ::EActionSlot::Slot_H;
+	}
+	
+	CurrentWeapon = _Weapon;
+	ActionBind(_Player, Slot, ::EActionInput::Weapon);
+}
+
+Void SwitchWeapon(CSmPlayer _Player, Integer _By)
+{
+	declare CurrentWeapon for _Player = 0;
+	declare MaxWeapon for _Player = 1;
+	
+	declare To = CurrentWeapon + _By;
+	
+	if (To < 0)
+	{
+		To = MaxWeapon;
+	}
+	else if (To > MaxWeapon)
+	{
+		To = 0;
+	}
+	
+	SwitchToWeapon(_Player, To);
+}
+
+Void ApplyClass(CSmPlayer _Player, Text[Text] _Class)
+{
+	declare CurrentWeapon for _Player = 0;
+	declare MaxWeapon for _Player = 1;
+	
+	CurrentWeapon = 0;
+	MaxWeapon = 1;
+	ActionLoad(_Player, ::EActionSlot::Slot_A, G_Actions[_Class["weapon1"]]);
+	ActionLoad(_Player, ::EActionSlot::Slot_B, G_Actions[_Class["weapon2"]]);
+	if (_Class.existskey("consumable1"))
+	{
+		ActionLoad(_Player, ::EActionSlot::Slot_C, G_Actions[_Class["consumable1"]]);
+		ActionBind(_Player, ::EActionSlot::Slot_C, ::EActionInput::Consumable1);
+	}
+	else
+	{
+		ActionBind(_Player, ::EActionSlot::Slot_C, ::EActionInput::None);
+	}
+	ActionBind(_Player, ::EActionSlot::Slot_A, ::EActionInput::Weapon);
+	
+	_Player.ArmorMax = TL::ToInteger(_Class["health"]);
+	_Player.StaminaMax = TL::ToReal(_Class["staminaMax"]);
+}
+
+Void ShowClassSelection(CSmPlayer _Player)
+{
+	declare SelectingClass for _Player = False;
+	SelectingClass = True;
+	declare Tmp = Layers::Detach("WeaponUI", _Player.Id);
+	Tmp = Layers::Attach("ClassSelection", _Player.Id);
+}
+
+Void HideClassSelection(CSmPlayer _Player)
+{
+	declare SelectingClass for _Player = False;
+	SelectingClass = False;
+	declare Tmp = Layers::Detach("ClassSelection", _Player.Id);
+	Tmp = Layers::Attach("WeaponUI", _Player.Id);
+}
+
+Text GetMLClassSelection()
+{
+	declare CurPage = 0;
+	declare Page = 0;
+	declare Y = 39.5;
+	declare ML = """
+<frame>
+	<quad posn="0 0 -10" halign="center" valign="center" sizen="230 90" bgcolor="0009" />
+	<label posn="0 44" halign="center" text="Class Selection" style="TextTitle1" textsize="4" />
+	<frame id="Page_0">""";
+	foreach (Name => Class in C_DefaultClasses)
+	{
+		if (CurPage == C_ClassesPerPage)
+		{
+			CurPage = 1;
+			Y = 39.5;
+			Page += 1;
+			ML ^= """
+			<quad posn="-70 -39" sizen="6 6" style="Icons64x64_1" substyle="ArrowDown" id="Btn_Page_{{{Page}}}" scriptevents="1" />
+		</frame>
+		<frame id="Page_{{{Page}}}" hidden="1">
+			<quad posn="-114 -39" sizen="6 6" style="Icons64x64_1" substyle="ArrowUp" id="Btn_Page_{{{Page - 1}}}" scriptevents="1" />
+			""";
+		}
+		ML ^= """
+		<frame posn="-114 {{{Y}}}">
+			<quad posn="0 0 -5" sizen="50 15" bgcolor="0009" bgcolorfocus="07f9" scriptevents="1" id="Class_{{{Name}}}" />
+			<quad posn="1 -1" sizen="13 13" bgcolor="f00" /> <!-- hier kommt irgendwann das Bild hin -->
+			<label posn="15 -1" text="{{{Name}}}" />
+			<quad posn="15 -5" sizen="4 4" style="Icons64x64_1" substyle="First" /> <!-- TODO: passendere Bilder :D -->
+			<label posn="20 -6" text="{{{Class["weapon1"]}}}" style="TrackListItem" />
+			<quad posn="15 -9" sizen="4 4" style="Icons64x64_1" substyle="Second" />
+			<label posn="20 -10" text="{{{Class["weapon2"]}}}" style="TrackListItem" />
+		</frame>
+		""";
+		CurPage += 1;
+		Y -= 16;
+	}
+	ML ^= """
+	</frame>
+	<label posn="-54 35" style="TextCardScores2" text="Primary Weapon:" />
+	<quad posn="12.5 35.5" sizen="11 11" style="UiSMSpectatorScoreBig" substyle="PlayerIconBg" />
+	<quad posn="13 35 1" sizen="10 10" id="Quad_PrimaryWeapon" />
+	<label posn="-52 28" id="Lbl_PrimaryWeapon" />
+	<label posn="-52 22" text="Damage:" />
+	<quad posn="-27 21" sizen="50 3" bgcolor="0009" />
+	<quad posn="-27 21 1" sizen="0 3" bgcolor="f00" id="Quad_Stat_Dmg1" />
+	<label posn="-52 16" text="Accuracy:" />
+	<quad posn="-27 15" sizen="50 3" bgcolor="0009" />
+	<quad posn="-27 15 1" sizen="0 3" bgcolor="ff0" id="Quad_Stat_Acc1" />
+	<label posn="-52 10" text="Ammo:" />
+	<quad posn="-27 9" sizen="50 3" bgcolor="0009" />
+	<quad posn="-27 9 1" sizen="0 3" bgcolor="ff0" id="Quad_Stat_Ammo1" />
+	<label posn="-52 4" text="Range:" />
+	<quad posn="-27 3" sizen="50 3" bgcolor="0009" />
+	<quad posn="-27 3 1" sizen="0 3" bgcolor="ff0" id="Quad_Stat_Rng1" />
+	
+	<label posn="36 35" style="TextCardScores2" text="Secondary Weapon:" />
+	<quad posn="102.5 35.5" sizen="11 11" style="UiSMSpectatorScoreBig" substyle="PlayerIconBg" />
+	<quad posn="103 35 1" sizen="10 10" id="Quad_SecondaryWeapon" />
+	<label posn="38 28" id="Lbl_SecondaryWeapon" />
+	<label posn="38 22" text="Damage:" />
+	<quad posn="63 21" sizen="50 3" bgcolor="0009" />
+	<quad posn="63 21 1" sizen="0 3" bgcolor="ff0" id="Quad_Stat_Dmg2" />
+	<label posn="38 16" text="Accuracy:" />
+	<quad posn="63 15" sizen="50 3" bgcolor="0009" />
+	<quad posn="63 15 1" sizen="0 3" bgcolor="ff0" id="Quad_Stat_Acc2" />
+	<label posn="38 10" text="Ammo:" />
+	<quad posn="63 9" sizen="50 3" bgcolor="0009" />
+	<quad posn="63 9 1" sizen="0 3" bgcolor="ff0" id="Quad_Stat_Ammo2" />
+	<label posn="38 4" text="Range:" />
+	<quad posn="63 3" sizen="50 3" bgcolor="0009" />
+	<quad posn="63 3 1" sizen="0 3" bgcolor="ff0" id="Quad_Stat_Rng2" />
+	
+	<label posn="-54 -10" style="TextCardScores2" text="Stats" />
+	<label posn="-52 -17" text="Max. HP:" />
+	<quad posn="-27 -18" sizen="50 3" bgcolor="0009" />
+	<quad posn="-27 -18 1" sizen="0 3" bgcolor="0f0" id="Quad_Max_Health" />
+	<label posn="25 -18" textsize="2" textcolor="0f0" id="Lbl_Max_Health" hidden="1" />
+	<label posn="-52 -23" text="Stamina:" />
+	<quad posn="-27 -24" sizen="50 3" bgcolor="0009" />
+	<quad posn="-27 -24 1" sizen="0 3" bgcolor="00f" id="Quad_Max_Stamina" />
+	<label posn="25 -24" textsize="2" textcolor="00f" id="Lbl_Max_Stamina" hidden="1" />
+</frame>
+<script>
+<!--
+#Include "TextLib" as TL
+#Include "MathLib" as ML
+
+#Const C_ImagePrefix "file:///Media/Manialinks/"
+#Const C_BarWidth 50.0
+#Const C_MaximumStamina 3.0
+#Const C_ActionDmg [ "__dummy__" => 0.0""";
+	foreach (Action => Dmg in C_ActionDmg)
+	{
+		ML ^= """, "{{{Action}}}" => {{{Dmg}}}""";
+	}
+	ML ^= """]
+#Const C_ActionAcc [ "__dummy__" => 0.0""";
+	foreach (Action => Acc in C_ActionAcc)
+	{
+		ML ^= """, "{{{Action}}}" => {{{Acc}}}""";
+	}
+	ML ^= """]
+#Const C_ActionAmmo [ "__dummy__" => 0.0""";
+	foreach (Action => Ammo in C_ActionAmmo)
+	{
+		ML ^= """, "{{{Action}}}" => {{{Ammo}}}""";
+	}
+	ML ^= """]
+#Const C_ActionRng [ "__dummy__" => 0.0""";
+	foreach (Action => Rng in C_ActionRng)
+	{
+		ML ^= """, "{{{Action}}}" => {{{Rng}}}""";
+	}
+	ML ^= """]
+#Const C_Classes [ "__dummy__" => ["weapon1" => "", "weapon2" => "", "health" => "200", "staminaMax" => "1.0" ]""";
+	foreach (Name => Class in C_DefaultClasses)
+	{
+		ML ^= """, "{{{Name}}}" => [ "weapon1" => "{{{Class["weapon1"]}}}", "weapon2" => "{{{Class["weapon2"]}}}", "health" => "{{{Class["health"]}}}", "staminaMax" => "{{{Class["staminaMax"]}}}"  ]""";
+	}
+	ML ^= """]
+
+Text GetClassName(Text ControlId)
+{
+	return TL::SubString(ControlId, 6, TL::Length(ControlId) - 6);
+}
+
+{{{Manialink::Animations(["EaseOutBounce"])}}}
+
+Void AnimWidth(Text _Id, Real _Width)
+{
+	declare Col = <1. - _Width, _Width, 0.>;
+	LibManialink_Anim("<quad sizen=\"" ^ _Width * C_BarWidth ^ " 3\" bgcolor=\"" ^ TL::ColorToText(Col) ^ "\" id=\"" ^ _Id ^ "\" />", 500, "EaseOutBounce");
+}
+
+Void AnimWidth(Text _Id, Real _Width, Boolean _NoColor)
+{
+	if (_NoColor)
+	{
+		LibManialink_Anim("<quad sizen=\"" ^ _Width * C_BarWidth ^ " 3\" id=\"" ^ _Id ^ "\" />", 500, "EaseOutBounce");
+	}
+	else
+	{
+		AnimWidth(_Id, _Width);
+	}
+}
+
+Void AnimNums(Real MaximumHealth)
+{
+	declare Quad_Max_Health = (Page.GetFirstChild("Quad_Max_Health") as CMlQuad);
+	declare Lbl_Max_Health = (Page.GetFirstChild("Lbl_Max_Health") as CMlLabel);
+	declare Quad_Max_Stamina = (Page.GetFirstChild("Quad_Max_Stamina") as CMlQuad);
+	declare Lbl_Max_Stamina = (Page.GetFirstChild("Lbl_Max_Stamina") as CMlLabel);
+	
+	Lbl_Max_Health.Value = TL::ToText(ML::NearestInteger(Quad_Max_Health.Size.X / C_BarWidth * MaximumHealth));
+	Lbl_Max_Stamina.Value = TL::ToText(ML::NearestInteger(Quad_Max_Stamina.Size.X / C_BarWidth * 100 * C_MaximumStamina)) ^ "%";
+}
+
+main()
+{
+	declare Lbl_PrimaryWeapon = (Page.GetFirstChild("Lbl_PrimaryWeapon") as CMlLabel);
+	declare Lbl_SecondaryWeapon = (Page.GetFirstChild("Lbl_SecondaryWeapon") as CMlLabel);
+	declare Quad_PrimaryWeapon = (Page.GetFirstChild("Quad_PrimaryWeapon") as CMlQuad);
+	declare Quad_SecondaryWeapon = (Page.GetFirstChild("Quad_SecondaryWeapon") as CMlQuad);
+	declare Lbl_Max_Health = (Page.GetFirstChild("Lbl_Max_Health") as CMlLabel);
+	declare Lbl_Max_Stamina = (Page.GetFirstChild("Lbl_Max_Stamina") as CMlLabel);
+	declare MaximumHealth = 200.;
+	declare CurrentPage = (Page.GetFirstChild("Page_0") as CMlFrame);
+	
+	foreach (Class, C_Classes)
+	{
+		declare MaxHealth = TL::ToReal(Class["health"]);
+		
+		if (MaxHealth > MaximumHealth)
+		{
+			MaximumHealth = MaxHealth;
+		}
+	}
+	
+	declare netwrite Net_Class for UI = "";
+	Net_Class = "";
+	while (True)
+	{
+		foreach (Event, PendingEvents)
+		{
+			if (Event.Type == CMlEvent::Type::MouseClick)
+			{
+				if (TL::SubString(Event.ControlId, 0, 6) == "Class_")
+				{
+					Net_Class = GetClassName(Event.ControlId);
+				}
+				else if (TL::SubString(Event.ControlId, 0, 9) == "Btn_Page_")
+				{
+					declare NewPage = TL::SubString(Event.ControlId, 4, TL::Length(Event.ControlId) - 4);
+					CurrentPage.Hide();
+					CurrentPage = (Page.GetFirstChild(NewPage) as CMlFrame);
+					CurrentPage.Show();
+				}
+			}
+			else if (Event.Type == CMlEvent::Type::MouseOver)
+			{
+				if (TL::SubString(Event.ControlId, 0, 6) == "Class_")
+				{
+					declare Class = GetClassName(Event.ControlId);
+					declare Weapon1 = C_Classes[Class]["weapon1"];
+					declare Weapon2 = C_Classes[Class]["weapon2"];
+					declare MaxHealth = C_Classes[Class]["health"];
+					declare MaxStamina = C_Classes[Class]["staminaMax"];
+					declare IMaxHealth = TL::ToInteger(MaxHealth);
+					declare RMaxStamina = TL::ToReal(MaxStamina);
+					
+					Lbl_PrimaryWeapon.Value = Weapon1;
+					Quad_PrimaryWeapon.ImageUrl = C_ImagePrefix ^ "Weapons/" ^ Weapon1 ^ ".dds";
+					Lbl_SecondaryWeapon.Value = Weapon2;
+					Quad_SecondaryWeapon.ImageUrl = C_ImagePrefix ^ "Weapons/" ^ Weapon2 ^ ".dds";
+					
+					AnimWidth("Quad_Max_Health", IMaxHealth / MaximumHealth, True);
+					AnimWidth("Quad_Max_Stamina", RMaxStamina / C_MaximumStamina, True);
+					Lbl_Max_Health.Show();
+					Lbl_Max_Stamina.Show();
+					
+					
+					if (C_ActionDmg.existskey(Weapon1))
+					{
+						AnimWidth("Quad_Stat_Dmg1", C_ActionDmg[Weapon1]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Dmg1", 0.0);
+					}
+					
+					if (C_ActionAcc.existskey(Weapon1))
+					{
+						AnimWidth("Quad_Stat_Acc1", C_ActionAcc[Weapon1]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Acc1", 0.0);
+					}
+					
+					if (C_ActionAmmo.existskey(Weapon1))
+					{
+						AnimWidth("Quad_Stat_Ammo1", C_ActionAmmo[Weapon1]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Ammo1", 0.0);
+					}
+					
+					if (C_ActionRng.existskey(Weapon1))
+					{
+						AnimWidth("Quad_Stat_Rng1", C_ActionRng[Weapon1]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Rng1", 0.0);
+					}
+					
+					// Weapon 2
+					if (C_ActionDmg.existskey(Weapon2))
+					{
+						AnimWidth("Quad_Stat_Dmg2", C_ActionDmg[Weapon2]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Dmg2", 0.0);
+					}
+					
+					if (C_ActionAcc.existskey(Weapon2))
+					{
+						AnimWidth("Quad_Stat_Acc2", C_ActionAcc[Weapon2]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Acc2", 0.0);
+					}
+					
+					if (C_ActionAmmo.existskey(Weapon2))
+					{
+						AnimWidth("Quad_Stat_Ammo2", C_ActionAmmo[Weapon2]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Ammo2", 0.0);
+					}
+					
+					if (C_ActionRng.existskey(Weapon2))
+					{
+						AnimWidth("Quad_Stat_Rng2", C_ActionRng[Weapon2]);
+					}
+					else
+					{
+						AnimWidth("Quad_Stat_Rng2", 0.0);
+					}
+				}
+			}
+			else if (Event.Type == CMlEvent::Type::MouseOut)
+			{
+				Lbl_Max_Health.Hide();
+				Lbl_Max_Stamina.Hide();
+				Lbl_PrimaryWeapon.Value = "";
+				Quad_PrimaryWeapon.ImageUrl = "";
+				Quad_SecondaryWeapon.ImageUrl = "";
+				Lbl_SecondaryWeapon.Value = "";
+				AnimWidth("Quad_Stat_Dmg1", 0.0);
+				AnimWidth("Quad_Stat_Acc1", 0.0);
+				AnimWidth("Quad_Stat_Ammo1", 0.0);
+				AnimWidth("Quad_Stat_Rng1", 0.0);
+				AnimWidth("Quad_Stat_Dmg2", 0.0);
+				AnimWidth("Quad_Stat_Acc2", 0.0);
+				AnimWidth("Quad_Stat_Ammo2", 0.0);
+				AnimWidth("Quad_Stat_Rng2", 0.0);
+				AnimWidth("Quad_Max_Health", 0.0, True);
+				AnimWidth("Quad_Max_Stamina", 0.0, True);
+			}
+		}
+		yield;
+		LibManialink_AnimLoop();
+		AnimNums(MaximumHealth);
+	}
+}
+-->
+</script>
+	""";
+	
+	return ML;
+}
+
+Text GetDefaultWeaponML()
+{
+	return """
+<label posn="0 -62" halign="center" text="Press N to switch class" style="TextTips" id="Lbl_ClassSelection" />
+<script>
+<!--
+main()
+{
+	declare netwrite Net_Class for UI = "";
+	declare Lbl_ClassSelection = (Page.GetFirstChild("Lbl_ClassSelection") as CMlLabel);
+	
+	while (True)
+	{
+		foreach (Event, PendingEvents)
+		{
+			switch (Event.Type)
+			{
+				case CMlEvent::Type::KeyPress: {
+					switch (Event.KeyName)
+					{
+						case "N": { // class selection
+							Net_Class = "";
+							Lbl_ClassSelection.SetText("Your class will be changed on next respawn.");
+						}
+					}
+				}
+			}
+		}
+		yield;
+	}
+}
+-->
+</script>
+	""";
+}
