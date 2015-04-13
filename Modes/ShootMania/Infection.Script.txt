@@ -61,7 +61,7 @@
 #Setting S_Snowballing					True		as "enable snowballing"
 //Other settings
 #Const	S_MinPlayers					2			//as "minimum players"
-#Const	Version							"2014-04-09"
+#Const	Version							"2014-04-13"
 
 #Const C_SmellDist				400.0 // squared
 #Const C_IdleSpec				60000
@@ -781,7 +781,7 @@ if (EndTime > -1 && EndTime <= Now)
 	if (!InfectionStarted)
 	{
 		declare CSmPlayer Player = Null;
-		FirstInfectedLogin = "";
+
 		if (FirstInfectedLogin != "")
 		{
 			foreach (_Player, Players)
