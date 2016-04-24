@@ -61,7 +61,7 @@
 #Setting S_Snowballing					True		as "enable snowballing"
 //Other settings
 #Const	S_MinPlayers					2			//as "minimum players"
-#Const	Version							"2014-04-13"
+#Const	Version							"2016-03-22"
 
 #Const C_SmellDist				400.0 // squared
 #Const C_IdleSpec				60000
@@ -73,11 +73,11 @@
 #Const C_CLRate					40
 #Const C_CLDiff					3
 #Const C_CountTick				500
-#Const C_DefaultColor			<1., 0., 0.>
-#Const C_InfectedColor			<0.2, .4, 0.>
+#Const C_DefaultColor			<0.2, .4, 0.> // <1., 0., 0.>
+#Const C_InfectedColor			<1., 0., 0.> // <0.2, .4, 0.>
 #Const C_RoundPauseTime			4000
 #Const C_MatchPauseTime			6000
-#Const C_DbgBots				0
+#Const C_DbgBots				1
 #Const C_DbgPlayers				0 // change this
 //#Const C_InfectedSkin			"file://Skins/Models/ArenaPlayer/Zombie.zip"
 
@@ -291,7 +291,8 @@ foreach (Player in AllPlayers)
 ScoresTable::Build(True, False);
 
 if ((ServerLogin == "pat07"
-	|| ServerLogin == "mewin") && C_DbgBots > 0)
+	|| ServerLogin == "mewin"
+	|| ServerLogin == "") && C_DbgBots > 0)
 {
 	for (I, 1, C_DbgBots)
 	{
@@ -317,11 +318,10 @@ if (PlayerCount() < S_MinPlayers)
 		{
 			if (Player.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned)
 			{
-				Player.ArmorReplenishGain = -1;
+				Player.ArmorReplenishGain = 0;
 				Player.ForceColor = <-1., -1., -1.>;
 				Player.ArmorMax = 200;
 				SM::SpawnPlayer(Player, 0, FindSpawn(0).PlayerSpawn, Now + 1000);
-				Player.Armor = 100;
 				SetPlayerAmmoMax(Player, CSmMode::EWeapon::Rocket, 4);
 				SetPlayerAmmoMax(Player, CSmMode::EWeapon::Nucleus, 2);
 				SetPlayerAmmo(Player, CSmMode::EWeapon::Rocket, 2);
@@ -666,6 +666,10 @@ if (LastInfectionTick + C_InfectionTick < Now)
 	
 	foreach (Player in AllPlayers)
 	{
+		if (Player.IsBot)
+		{
+			continue;
+		}
 		declare netwrite Net_Infected for Player = False;
 		declare netwrite Net_SurvNear for Player = 0.0;
 		
@@ -715,54 +719,6 @@ if (LastInfectionTick + C_InfectionTick < Now)
 				}
 				Net_SurvNear = 1. - (DMin / C_SmellDist);
 			}
-			
-			/*declare _CompPos for Player = 0;
-			if (_CompPos < CompList.count - 1)
-			{
-				for (I, _CompPos + 1, CompList.count - 1)
-				{
-					if (CompList.existskey(I) && AllPlayers.existskey(CompList[I]))
-					{
-						declare Victim <=> AllPlayers[CompList[I]];
-						if (Victim.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned && !IsInfected(Victim))
-						{
-							if (DistSquare(Player.Position, Victim.Position) < C_NearDistance)
-							{
-								Infect(Victim, Player);
-								+++OnTouch+++
-							}
-							else if (Victim.Position.X - Player.Position.X > C_NearDistance * C_CLDiff)
-							{
-								break;
-							}
-						}
-					}
-				}
-			}
-			if (_CompPos > 0)
-			{
-				declare Integer I = _CompPos - 1;
-				while(I >= 0) //why no for(I, _CompPos -1, 0, -1)?!
-				{
-					if (CompList.existskey(I) && AllPlayers.existskey(CompList[I]))
-					{
-						declare Victim <=> AllPlayers[CompList[I]];
-						if (Victim.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned && !IsInfected(Victim))
-						{
-							if (DistSquare(Player.Position, Victim.Position) < C_NearDistance)
-							{
-								Infect(Victim, Player);
-								+++OnTouch+++
-							}
-							else if (Player.Position.X - Victim.Position.X > C_NearDistance * C_CLDiff)
-							{
-								break;
-							}
-						}
-					}
-					I -= 1;
-				}
-			}*/
 		}
 	}
 }
@@ -1283,6 +1239,8 @@ Text UpdateRoundML()
 	return """
 		<label style="TextRaceChrono" posn="119 -74" valign="bottom" halign="right" textcolor="{{{TL::ColorToText(C_InfectedColor)}}}" text="{{{InfectedCount()}}}" id="Infs"/>
 		<label posn="120 -72" valign="bottom" text="/{{{PlayerCount()}}} infected" id="Players" />
+		<label style="TextTitle1" posn="0 20" halign="center" opacity="0.0" textcolor="f00" id="IdleLabel">$sYou are considered inactive. Please move in order to not get kicked!</label>
+		<label style="TextRaceChrono" posn="0 15" halign="center" visible="false" id="IdleTime" />
 		<frame id="FrmInfOnly">
 			<frame id="FrmSurvNear">
 				<gauge posn="-21 -87" ratio="0.5" clan="2" sizen="53 8" rot="180" id="SurvNear" />
@@ -1305,6 +1263,8 @@ Text UpdateRoundML()
 			declare netread Net_SurvNear for InputPlayer = 0.0;
 			declare SurvNear = 0.0;
 			
+			declare LblIdle = (Page.GetFirstChild("IdleLabel") as CMlLabel);
+			declare LblIdleTime = (Page.GetFirstChild("IdleTime") as CMlLabel);
 			declare LblInfs = (Page.GetFirstChild("Infs") as CMlLabel);
 			declare LblPlayers = (Page.GetFirstChild("Players") as CMlLabel);
 			declare FrmSurvNear = (Page.GetFirstChild("FrmSurvNear") as CMlFrame);
@@ -1335,6 +1295,18 @@ Text UpdateRoundML()
 						LibManialink_Anim("<quad id=\"QuadSurvNear\" colorize=\"777\" />", 200, "EaseInOutQuad");
 						LibManialink_Anim("<gauge id=\"SurvNear\" ratio=\"0.0\" />", 200, "EaseInOutQuad");
 					}
+				}
+				
+				if (InputPlayer.IdleDuration >= {{{C_IdleSpec * 0.8}}})
+				{
+					LblIdle.Opacity = 0.5 + 0.5 * ML::Sin(Now / 200.);
+					LblIdleTime.Visible = True;
+					LblIdleTime.Value = TL::TimeToText({{{C_IdleSpec}}} - InputPlayer.IdleDuration);
+				}
+				else
+				{
+					LblIdle.Opacity = 0.0;
+					LblIdleTime.Visible = False;
 				}
 				
 				ClientUI.OverlayHideCrosshair = FrmInfOnly.Visible;
