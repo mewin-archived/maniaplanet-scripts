@@ -73,11 +73,11 @@
 #Const C_CLRate					40
 #Const C_CLDiff					3
 #Const C_CountTick				500
-#Const C_DefaultColor			<0.2, .4, 0.> // <1., 0., 0.>
-#Const C_InfectedColor			<1., 0., 0.> // <0.2, .4, 0.>
+#Const C_DefaultColor			<1., 0., 0.>
+#Const C_InfectedColor			<0.2, .4, 0.>
 #Const C_RoundPauseTime			4000
 #Const C_MatchPauseTime			6000
-#Const C_DbgBots				1
+#Const C_DbgBots				0
 #Const C_DbgPlayers				0 // change this
 //#Const C_InfectedSkin			"file://Skins/Models/ArenaPlayer/Zombie.zip"
 
