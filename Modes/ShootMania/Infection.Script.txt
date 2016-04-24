@@ -1,6 +1,6 @@
 /*
  * Infection Gamemode for ShootMania Storm
- * Copyright © 2014 by mewin<mewin001@hotmail.de>
+ * Copyright © 2016 by mewin<mewin@mewin.de>
  * for more information contact me via email or visit my website (mewin.de)
  *
  * This program is free software: you can redistribute it and/or modify
